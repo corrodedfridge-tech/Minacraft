@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Web Clone</title>
+    <title>Minacraft</title>
     <style>
         body {
             margin: 0;
@@ -133,12 +133,14 @@
 <body>
 
     <div id="ui">
-        <h1>JS Minecraft</h1>
+        <h1>Minacraft</h1>
         <p>Click to Start</p>
         <p>WASD to Move, SHIFT to Run, SPACE to Jump</p>
         <p>Hold Left Click to Mine</p>
         <p>Right Click to Build</p>
         <p>1-7 to select inventory slot</p>
+        <p>Esc to pause</p>
+        <p>Changelog: Player can't longer build on himself</p>
     </div>
 
     <div id="crosshair">
@@ -779,12 +781,32 @@
         function placeBlock(hit) {
             const slot = inventory[selectedSlot];
             if (!slot || slot.count <= 0) return;
-            const r = PLAYER_RADIUS;
-            if (hit.px >= playerPos.x - r && hit.px <= playerPos.x + r &&
-                hit.pz >= playerPos.z - r && hit.pz <= playerPos.z + r &&
-                hit.py >= playerPos.y && hit.py <= playerPos.y + PLAYER_HEIGHT) {
+
+            // Player Bounding Box Dimensions
+            const playerMinX = playerPos.x - PLAYER_RADIUS;
+            const playerMaxX = playerPos.x + PLAYER_RADIUS;
+            const playerMinY = playerPos.y;
+            const playerMaxY = playerPos.y + PLAYER_HEIGHT;
+            
+            // Proposed Block Bounding Box (always 1x1x1 at integer coordinates)
+            const blockMinX = hit.px;
+            const blockMaxX = hit.px + 1;
+            const blockMinY = hit.py;
+            const blockMaxY = hit.py + 1;
+            const blockMinZ = hit.pz;
+            const blockMaxZ = hit.pz + 1;
+            
+            // Intersection check on X, Y, and Z axes
+            const xOverlap = playerMaxX > blockMinX && playerMinX < blockMaxX;
+            const yOverlap = playerMaxY > blockMinY && playerMinY < blockMaxY;
+            const zOverlap = playerPos.z + PLAYER_RADIUS > blockMinZ && playerPos.z - PLAYER_RADIUS < blockMaxZ;
+            
+            if (xOverlap && yOverlap && zOverlap) {
+                // Collision detected: Prevent building inside the player's volume
+                console.log("Placement blocked: Block intersects with player's bounding box.");
                 return; 
             }
+
             setBlock(hit.px, hit.py, hit.pz, slot.type);
             removeFromInventory();
         }
@@ -920,6 +942,7 @@
                 
                 // Secondary ground check for stability (prevents jitter when standing still)
                 if (!groundedThisFrame && onGround) {
+                    // Check for tiny floating distance, allowing jump
                     if (checkCollision(new THREE.Vector3(playerPos.x, playerPos.y - 0.1, playerPos.z))) {
                         groundedThisFrame = true;
                     }
