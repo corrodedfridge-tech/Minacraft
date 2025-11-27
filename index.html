@@ -250,7 +250,6 @@
         #btn-down { bottom: 0; left: 50px; width: 50px; height: 50px; }
         #btn-left { top: 50px; left: 0; width: 50px; height: 50px; }
         #btn-right { top: 50px; right: 0; width: 50px; height: 50px; }
-        
         #action-buttons { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; }
         #btn-jump { bottom: 40px; right: 40px; width: 70px; height: 70px; border-radius: 50%; }
 
@@ -270,7 +269,7 @@
             <div class="splash-text">uhh</div>
         </div>
         <button class="mc-button" id="btn-generate">Generate World</button>
-        <div class="version-text">Minacraft JS 1.7 (Caves & Oceans)</div>
+        <div class="version-text">Minacraft JS 1.10 (Cave Fixes & Hand)</div>
         <div class="copyright-text">Copyright not Mojang AB</div>
     </div>
 
@@ -333,7 +332,7 @@
         const CHUNK_SIZE = 16;
         const CHUNK_HEIGHT = 128; 
         const RENDER_DISTANCE = 4;
-        const WATER_LEVEL = 60; // Deep ocean level
+        const WATER_LEVEL = 60; 
         const SNOW_LEVEL = 105; 
         
         // Physics
@@ -372,7 +371,6 @@
             [BLOCKS.SNOW]: { all: '#FFFFFF', display: '#FFFFFF' }
         };
 
-        // Day/Night Cycle (10 mins = 600s)
         let timeOfDay = 0.2; 
         const daySpeed = 1.0 / 600.0; 
         const daySkyColor = new THREE.Color(0x87CEEB);
@@ -382,7 +380,6 @@
         const underwaterSkyColor = new THREE.Color(0x001133);
         const underwaterFogColor = new THREE.Color(0x001133); 
 
-        // --- INVENTORY ---
         const INVENTORY_SIZE = 7;
         let inventory = Array(INVENTORY_SIZE).fill(null);
         let selectedSlot = 0;
@@ -433,7 +430,6 @@
             return true;
         }
 
-        // --- HEALTH ---
         let maxHealth = 10;
         let currentHealth = 10;
         let highestY = 0;
@@ -469,7 +465,6 @@
             }
         }
 
-        // --- NOISE ---
         class SimplexNoise {
             constructor() {
                 this.p = new Uint8Array(256);
@@ -567,7 +562,6 @@
             }
         }
 
-        // --- DYNAMIC TEXTURES ---
         function createTexture(colorStr) {
             const canvas = document.createElement('canvas');
             canvas.width = 64;
@@ -575,7 +569,6 @@
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = colorStr;
             ctx.fillRect(0, 0, 64, 64);
-            // Noise
             for(let i=0; i<400; i++) {
                 const x = Math.random() * 64;
                 const y = Math.random() * 64;
@@ -589,7 +582,6 @@
             return tex;
         }
 
-        // STATIC WATER TEXTURE (SOLID BLUE)
         const waterCanvas = document.createElement('canvas');
         waterCanvas.width = 64;
         waterCanvas.height = 64;
@@ -597,12 +589,11 @@
         const waterTexture = new THREE.CanvasTexture(waterCanvas);
         waterTexture.magFilter = THREE.NearestFilter;
         
-        // Wrap S/T for world UVs
         waterTexture.wrapS = THREE.RepeatWrapping;
         waterTexture.wrapT = THREE.RepeatWrapping;
 
         function updateWaterTexture() {
-            waterCtx.fillStyle = '#0055AA'; // Solid deep blue
+            waterCtx.fillStyle = '#0055AA'; 
             waterCtx.fillRect(0, 0, 64, 64);
             waterTexture.needsUpdate = true;
         }
@@ -617,6 +608,18 @@
         const renderer = new THREE.WebGLRenderer({ antialias: false });
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
+
+        // PLAYER HAND
+        const handGroup = new THREE.Group();
+        const handGeo = new THREE.BoxGeometry(0.2, 0.2, 0.6);
+        const handMat = new THREE.MeshLambertMaterial({ color: 0xeebb99 }); // Skin color
+        const handMesh = new THREE.Mesh(handGeo, handMat);
+        handMesh.position.set(0.4, -0.3, -0.8); 
+        handMesh.rotation.x = 0.3;
+        handMesh.rotation.y = -0.1;
+        handGroup.add(handMesh);
+        playerCamera.add(handGroup);
+        scene.add(playerCamera); // Add camera to scene to render hand
 
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
@@ -634,7 +637,6 @@
         const moon = new THREE.Mesh(moonGeo, moonMat);
         scene.add(moon);
 
-        // CLOUDS
         const cloudGeo = new THREE.BoxGeometry(1, 1, 1);
         const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.8, transparent: true });
         const clouds = new THREE.Group();
@@ -773,67 +775,62 @@
                     const wx = cx * CHUNK_SIZE + x;
                     const wz = cz * CHUNK_SIZE + z;
                     
-                    // 1. Continent Noise (Low freq) - Determines Ocean vs Land mass
                     let continentalness = noise.noise2D(wx / 400, wz / 400); 
-                    
-                    // 2. Detail Noise (High freq) - Hills and mountains
                     let peaks = noise.noise2D(wx / 50, wz / 50);
                     
-                    // Calculate Height
-                    // Base sea floor is low (30). Land rises up to 90+.
                     let baseHeight = 40;
                     if (continentalness > 0.2) {
-                        // Land Mass
                         baseHeight += (continentalness - 0.2) * 60 + (peaks + 1) * 10;
                     } else {
-                        // Ocean floor
-                        baseHeight += continentalness * 20; // Go deeper
+                        baseHeight += continentalness * 20; 
                     }
                     
                     let surfaceHeight = Math.floor(baseHeight);
                     surfaceHeight = Math.max(5, Math.min(CHUNK_HEIGHT - 5, surfaceHeight));
 
-                    // Smooth Snow Transition Noise
                     let snowNoise = noise.noise2D(wx / 10, wz / 10) * 3;
 
                     for (let y = 0; y < CHUNK_HEIGHT; y++) {
                         let type = BLOCKS.AIR;
                         
-                        // 3D Noise for Caves (Only in land/stone areas)
-                        let isCave = false;
-                        if (y > 5 && y < surfaceHeight - 5) {
-                            // Small spaghetti caves
-                            if (noise.noise3D(wx/15, y/15, wz/15) > 0.6) isCave = true;
-                            // Big caverns
-                            if (noise.noise3D(wx/30, y/30, wz/30) > 0.75) isCave = true;
-                        }
-
+                        let tentativeType = BLOCKS.AIR;
                         if (y === 0) { 
-                            type = BLOCKS.BEDROCK; 
+                            tentativeType = BLOCKS.BEDROCK; 
                         } else if (y <= surfaceHeight) {
-                            if (isCave) {
-                                type = BLOCKS.AIR;
-                            } else {
-                                // Underground
-                                if (y < surfaceHeight - 3) {
-                                    type = BLOCKS.STONE;
-                                } 
-                                // Surface Layers (Removed slope-based DIRT logic)
-                                else {
-                                    if (y >= SNOW_LEVEL + snowNoise) {
-                                        type = BLOCKS.SNOW; // Snowy peaks
-                                    } else if (y <= WATER_LEVEL + 2) {
-                                        type = BLOCKS.SAND; // Beaches/shallow water floor
+                            // SOLID UNDERGROUND
+                            if (y < surfaceHeight - 3) {
+                                tentativeType = BLOCKS.STONE;
+                            } 
+                            // SURFACE
+                            else {
+                                if (y >= SNOW_LEVEL + snowNoise) {
+                                    tentativeType = BLOCKS.SNOW;
+                                } else if (y <= WATER_LEVEL + 2) {
+                                    // DEEP SAND LOGIC
+                                    if (y >= surfaceHeight - 3) {
+                                         tentativeType = BLOCKS.SAND;
                                     } else {
-                                        type = BLOCKS.GRASS; // Plains/Hills
+                                         tentativeType = BLOCKS.STONE;
                                     }
+                                } else {
+                                    tentativeType = BLOCKS.GRASS;
                                 }
                             }
+                        } else if (y <= WATER_LEVEL) {
+                            tentativeType = BLOCKS.WATER;
                         }
-                        
-                        // Water Logic (Mutually Exclusive)
-                        if (type === BLOCKS.AIR && y <= WATER_LEVEL) {
-                            type = BLOCKS.WATER;
+
+                        // Caves (Only in STONE and above WATER_LEVEL)
+                        let isCave = false;
+                        if (tentativeType === BLOCKS.STONE && y > WATER_LEVEL) {
+                             if (noise.noise3D(wx/15, y/15, wz/15) > 0.6) isCave = true;
+                             if (noise.noise3D(wx/30, y/30, wz/30) > 0.75) isCave = true;
+                        }
+
+                        if (isCave) {
+                            type = BLOCKS.AIR;
+                        } else {
+                            type = tentativeType;
                         }
 
                         data[x + z * CHUNK_SIZE + y * CHUNK_SIZE * CHUNK_SIZE] = type;
@@ -1044,12 +1041,30 @@
                 case 'KeyW': keys.w = false; break;
                 case 'KeyA': keys.a = false; break;
                 case 'KeyS': keys.s = false; break;
-                case 'KeyD': keys.d = false; break;
+                case 'KeyD': false; break;
                 case 'Space': keys.space = false; break;
                 case 'ShiftLeft': keys.shift = false; break;
             }
         });
-        document.addEventListener('mousedown', (e) => { if (!controls.isLocked) return; if (e.button === 0) { mouse.left = true; isMining = true; miningTime = 0; } if (e.button === 2) { const hit = raycast(); if (hit) placeBlock(hit); } });
+        document.addEventListener('mousedown', (e) => { 
+            if (!controls.isLocked) return; 
+            if (e.button === 0) { 
+                mouse.left = true; isMining = true; miningTime = 0; 
+                // Hand Swing Animation
+                let swingProgress = 0;
+                const swingInterval = setInterval(() => {
+                    swingProgress += 0.2;
+                    handMesh.rotation.x = 0.3 - Math.sin(swingProgress * Math.PI) * 0.5;
+                    handMesh.rotation.z = Math.sin(swingProgress * Math.PI) * 0.2;
+                    if (swingProgress >= 1) {
+                        clearInterval(swingInterval);
+                        handMesh.rotation.x = 0.3;
+                        handMesh.rotation.z = 0;
+                    }
+                }, 30);
+            } 
+            if (e.button === 2) { const hit = raycast(); if (hit) placeBlock(hit); } 
+        });
         document.addEventListener('mouseup', (e) => { if (e.button === 0) { mouse.left = false; isMining = false; miningTime = 0; resetMiningUI(); } });
 
         // Touch Buttons Logic
@@ -1211,6 +1226,9 @@
         function resetMiningUI() { const el = document.getElementById('mining-progress'); el.style.opacity = 0; el.style.background = 'none'; }
 
         let prevTime = performance.now(), fpsFrames = 0, lastFpsTime = 0;
+        
+        // Hand Bobbing Logic
+        let bobTimer = 0;
 
         function animate() {
             requestAnimationFrame(animate);
@@ -1252,6 +1270,19 @@
                 const currentDrag = inWater ? WATER_DRAG : DRAG;
                 const currentGravity = inWater ? WATER_GRAVITY : GRAVITY;
                 const currentSpeed = inWater ? SWIM_SPEED : (keys.shift ? RUN_SPEED : WALK_SPEED);
+                
+                // Input Movement vector for bobbing check
+                const moving = keys.w || keys.a || keys.s || keys.d;
+                if(moving && onGround) {
+                    bobTimer += delta * (keys.shift ? 18 : 12);
+                    handMesh.position.x = 0.4 + Math.cos(bobTimer) * 0.02;
+                    handMesh.position.y = -0.3 + Math.abs(Math.sin(bobTimer)) * 0.04;
+                } else {
+                    // Reset hand position smoothly
+                    handMesh.position.x = THREE.MathUtils.lerp(handMesh.position.x, 0.4, delta * 10);
+                    handMesh.position.y = THREE.MathUtils.lerp(handMesh.position.y, -0.3, delta * 10);
+                }
+                
                 velocity.x -= velocity.x * currentDrag * delta; velocity.z -= velocity.z * currentDrag * delta; velocity.y -= currentGravity * delta;
                 if (inWater) { if (keys.space) { velocity.y += SWIM_UP_FORCE * delta * 5; } else { if (playerPos.y < WATER_LEVEL) velocity.y += 15.0 * delta; } }
                 const forward = new THREE.Vector3(); playerCamera.getWorldDirection(forward); forward.y = 0; forward.normalize();
